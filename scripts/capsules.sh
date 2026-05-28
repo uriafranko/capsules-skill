@@ -94,7 +94,7 @@ json_object_or_die() {
 }
 
 require_auth() {
-  [[ -n "$AUTH_TOKEN" ]] || die "missing write credential; run 'capsules.sh auth login', ask the user to sign in or register, then save the pasted API key with 'capsules.sh auth save <key>'"
+  [[ -n "$AUTH_TOKEN" ]] || die "missing write credential; run 'capsules.sh auth login' and follow its agent instructions: tell the user to open the auth URL, wait for the API key, save it yourself, then retry"
 }
 
 api_json_with_token() {
@@ -200,16 +200,27 @@ cmd_auth() {
     login)
       [[ $# -eq 0 ]] || die "usage: capsules.sh auth login"
       cat <<EOF
-Open this URL, sign in or create an account, generate an agent API key, and paste it back into the agent:
+STOP: Capsules auth is missing. This is a hard gate.
 
-$BASE_URL/agent-auth
+Do not inspect files, read project context, prepare a summary, create a fallback brief, or continue the original Capsules task until the user replies with an API key.
 
-Then save it with:
+Tell the user exactly:
 
-./scripts/capsules.sh auth save "{CAPSULES_API_KEY}"
+"Please open $BASE_URL/agent-auth, sign in or create an account, click Generate key, copy the generated API key, and paste it here. I'll wait."
+
+Then stop and wait for the user's next message.
+
+When the user sends the key, run:
+
+./scripts/capsules.sh auth save "{PASTED_API_KEY}"
+./scripts/capsules.sh auth status
+
+Only if write_credential=present, continue the original Capsules task.
 
 capsule_auth.login_url=$BASE_URL/agent-auth
 capsule_auth.credentials_file=$CREDENTIALS_FILE
+capsule_auth.next_action=ask_user_for_api_key
+capsule_auth.stop_until_user_replies=true
 EOF
       ;;
     save)

@@ -10,7 +10,7 @@ description: >
 
 # Capsules
 
-Skill version: 0.1.1
+Skill version: 0.1.3
 
 Capsules are shared context stores for agent handoff.
 
@@ -49,7 +49,8 @@ explicit scopes, it needs `capsules:write` for create, ingest, and token
 rotation. API keys without explicit scopes are treated as allowed for capsule
 read and write operations.
 
-Before any `create`, `ingest`, or token rotation, check auth:
+Before any `create`, `ingest`, token rotation, project read, or summary
+preparation for a capsule, check auth:
 
 ```bash
 ./scripts/capsules.sh auth status
@@ -62,15 +63,21 @@ capsule exists. Start the login flow:
 ./scripts/capsules.sh auth login
 ```
 
-Ask the user to open the printed URL, sign in or create an account, generate an
-agent API key, and paste the key back into the chat. After receiving the key,
-save it yourself:
+The `auth login` output is addressed to you, the agent. Treat it as a hard
+stop. Do not paste the raw output as the final answer. Do not inspect files,
+read project context, prepare summaries, or do any background work while waiting
+for auth. Tell the user to open the auth URL, sign in or create an account,
+click Generate key, copy the generated API key, and paste it into the chat.
+Then stop and wait.
+
+After receiving the key, do not echo it back. Save it yourself:
 
 ```bash
 ./scripts/capsules.sh auth save "{CAPSULES_API_KEY}"
 ```
 
-Then rerun `auth status` and continue the requested Capsules operation.
+Then rerun `auth status`. If `write_credential=present`, continue the requested
+Capsules operation.
 
 Store a credential:
 
