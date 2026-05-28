@@ -10,14 +10,14 @@ description: >
 
 # Capsules
 
-Skill version: 0.1.3
+Skill version: 0.1.4
 
 Capsules are shared context stores for agent handoff.
 
 Use Capsules for three jobs:
 
-- Create a capsule and save its one-time read token.
-- Ingest text or JSON payloads into a capsule.
+- Push chunked handoff context into a new capsule.
+- Ingest additional chunked JSON payloads into an existing capsule.
 - Query a capsule with the read token and return ranked chunks.
 
 ## Requirements
@@ -92,6 +92,55 @@ Never commit credentials or local state files:
 
 ## Create
 
+For a new handoff capsule, use `push`, not separate `create` then `ingest`.
+`push` creates the capsule, ingests a required chunked payload, saves the read
+token locally, and returns the handoff block in one command.
+
+Prepare a temporary JSON payload with explicit chunks. Do not write one large
+markdown file and ingest it with `--from` for handoff work.
+
+```json
+{
+  "title": "Project handoff",
+  "source": "codex",
+  "metadata": {
+    "purpose": "friend-friendly project summary"
+  },
+  "chunks": [
+    {
+      "key": "purpose",
+      "title": "What this project is",
+      "text": "Plain-language summary of the project.",
+      "tags": ["overview"]
+    },
+    {
+      "key": "how-it-works",
+      "title": "How it works",
+      "text": "Focused explanation of the main flow and moving parts.",
+      "tags": ["architecture"]
+    },
+    {
+      "key": "handoff-next-steps",
+      "title": "What to do next",
+      "text": "Concrete next steps or caveats for the receiving agent.",
+      "tags": ["handoff"]
+    }
+  ]
+}
+```
+
+Then run one command:
+
+```bash
+./scripts/capsules.sh push "Project handoff" --payload /tmp/capsules-ingest.json
+```
+
+Use 3-12 chunks for normal handoffs. Each chunk should answer one likely future
+question and should usually stay under 1,500 words. Include stable `key`,
+descriptive `title`, concise `text`, and useful `tags`.
+
+Use separate `create` only when the user explicitly wants an empty capsule:
+
 ```bash
 ./scripts/capsules.sh create "Project handoff"
 ```
@@ -102,16 +151,17 @@ rotating a token, so preserve it.
 
 ## Ingest
 
-Plain text file:
+Prefer exact chunked payloads:
 
 ```bash
-./scripts/capsules.sh ingest {capsule-id} --from ./handoff.md --source codex
+./scripts/capsules.sh ingest {capsule-id} --payload /tmp/capsules-ingest.json
 ```
 
-Exact API payload:
+Use plain text fallback only for quick one-off notes where chunk quality does
+not matter:
 
 ```bash
-./scripts/capsules.sh ingest {capsule-id} --payload ./ingest.json
+./scripts/capsules.sh ingest {capsule-id} --from ./note.md --source codex
 ```
 
 ## Query
@@ -147,6 +197,8 @@ write `capsule_result.*` lines to stderr for agents that need stable summaries.
 
 When reporting results to the user:
 
+- For `push`, include the capsule id, document id, chunk count, and handoff
+  block. This is the preferred successful result for a new handoff.
 - For `create`, include the capsule id and remind them the read token was saved
   locally by the script.
 - For `ingest`, include the document id and chunk count.

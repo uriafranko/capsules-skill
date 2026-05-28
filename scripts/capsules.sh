@@ -32,6 +32,7 @@ Commands:
   auth login
   auth save <token>
   auth status
+  push <name> --payload <json-file> [--metadata-json <json>]
   create <name> [--metadata-json <json>]
   ingest <capsule-id> (--from <file> | --raw-text <text> | --payload <json-file>)
     [--title <title>] [--source <source>] [--document-id <id>] [--metadata-json <json>]
@@ -91,6 +92,25 @@ json_object_or_die() {
   local value="$1"
   local field="$2"
   printf '%s' "$value" | jq -e 'type == "object"' >/dev/null || die "$field must be a JSON object"
+}
+
+read_payload_file() {
+  local payload="$1"
+  local require_chunks="${2:-0}"
+  local body
+
+  [[ -f "$payload" ]] || die "payload file does not exist: $payload"
+  body=$(cat "$payload")
+  printf '%s' "$body" | jq -e 'type == "object"' >/dev/null || die "payload must be a JSON object"
+
+  if [[ "$require_chunks" -eq 1 ]]; then
+    printf '%s' "$body" | jq -e '
+      (.chunks | type == "array" and length > 0)
+      and all(.chunks[]; type == "object" and (.text | type == "string" and length > 0))
+    ' >/dev/null || die "push requires a chunked payload: include chunks[] with non-empty text fields"
+  fi
+
+  printf '%s' "$body"
 }
 
 require_auth() {
@@ -267,6 +287,62 @@ cmd_create() {
   echo "capsule_result.read_token_saved=true" >&2
 }
 
+cmd_push() {
+  local name="" payload="" metadata="{}" create_body ingest_body create_response ingest_response capsule_id read_token endpoint
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --payload) payload="$2"; shift 2 ;;
+      --metadata-json) metadata="$2"; shift 2 ;;
+      --*) die "unknown push option: $1" ;;
+      *) [[ -z "$name" ]] && name="$1" || die "unexpected push argument: $1"; shift ;;
+    esac
+  done
+
+  [[ -n "$name" && -n "$payload" ]] || die "usage: capsules.sh push <name> --payload <json-file> [--metadata-json <json>]"
+  json_object_or_die "$metadata" "metadata"
+  ingest_body=$(read_payload_file "$payload" 1)
+
+  create_body=$(jq -n --arg name "$name" --argjson metadata "$metadata" '{name:$name, metadata:$metadata}')
+  create_response=$(api_json POST "/api/capsules" "$create_body")
+  save_capsule_response "$create_response"
+
+  capsule_id=$(printf '%s' "$create_response" | jq -r '.capsule.id // empty')
+  [[ -n "$capsule_id" ]] || die "create response did not include capsule id"
+
+  ingest_response=$(api_json POST "/api/capsules/$capsule_id/ingest" "$ingest_body")
+  read_token=$(printf '%s' "$create_response" | jq -r '.readToken // empty')
+  endpoint="$BASE_URL/api/public/capsules/$capsule_id/query"
+
+  jq -n \
+    --argjson create "$create_response" \
+    --argjson ingest "$ingest_response" \
+    --arg apiBase "$BASE_URL" \
+    --arg capsuleId "$capsule_id" \
+    --arg endpoint "$endpoint" \
+    --arg readToken "$read_token" \
+    '{
+      capsule: $create.capsule,
+      readToken: $create.readToken,
+      ingest: $ingest,
+      handoff: {
+        api_base: $apiBase,
+        capsule_id: $capsuleId,
+        query_endpoint: $endpoint,
+        read_token: $readToken,
+        instruction: "Query this Capsule before you start, then use the returned chunks as context."
+      }
+    }'
+
+  echo "" >&2
+  echo "capsule_result.action=push" >&2
+  echo "capsule_result.capsule_id=$capsule_id" >&2
+  echo "capsule_result.document_id=$(printf '%s' "$ingest_response" | jq -r '.documentId // empty')" >&2
+  echo "capsule_result.chunk_count=$(printf '%s' "$ingest_response" | jq -r '.chunkCount // empty')" >&2
+  echo "capsule_result.auth_token_source=$AUTH_TOKEN_SOURCE" >&2
+  echo "capsule_result.read_token_saved=true" >&2
+}
+
 cmd_ingest() {
   local capsule_id="${1:-}"
   [[ -n "$capsule_id" ]] || die "usage: capsules.sh ingest <capsule-id> (--from <file> | --raw-text <text> | --payload <json-file>)"
@@ -289,9 +365,7 @@ cmd_ingest() {
   done
 
   if [[ -n "$payload" ]]; then
-    [[ -f "$payload" ]] || die "payload file does not exist: $payload"
-    body=$(cat "$payload")
-    printf '%s' "$body" | jq -e 'type == "object"' >/dev/null || die "payload must be a JSON object"
+    body=$(read_payload_file "$payload")
   else
     [[ -z "$from" || -z "$raw_text" ]] || die "use either --from or --raw-text, not both"
     if [[ -n "$from" ]]; then
@@ -396,6 +470,9 @@ EOF
 case "$CMD" in
   auth)
     cmd_auth "$@"
+    ;;
+  push)
+    cmd_push "$@"
     ;;
   create)
     cmd_create "$@"
