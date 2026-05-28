@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${CAPSULES_BASE_URL:-http://localhost:3000}"
+BASE_URL="${CAPSULES_BASE_URL:-https://capsules-bay.vercel.app}"
 CREDENTIALS_FILE="$HOME/.capsules/credentials"
 AUTH_TOKEN="${CAPSULES_API_KEY:-${CAPSULES_AUTH_TOKEN:-}}"
 AUTH_TOKEN_SOURCE="none"
@@ -21,7 +21,7 @@ usage() {
 Usage: capsules.sh [global options] <command> [args]
 
 Global options:
-  --base-url <url>             API base URL (default: $CAPSULES_BASE_URL or http://localhost:3000)
+  --base-url <url>             API base URL (default: $CAPSULES_BASE_URL or https://capsules-bay.vercel.app)
   --api-key <key>              Capsules API key for write APIs
   --auth-token <token>         Bearer token for write APIs
   --read-token <token>         Capsule read token for query/handoff
@@ -29,6 +29,7 @@ Global options:
   --allow-insecure-base-url    Allow sending credentials to non-local http:// URLs
 
 Commands:
+  auth login
   auth save <token>
   auth status
   create <name> [--metadata-json <json>]
@@ -93,7 +94,7 @@ json_object_or_die() {
 }
 
 require_auth() {
-  [[ -n "$AUTH_TOKEN" ]] || die "missing write credential; set CAPSULES_API_KEY, CAPSULES_AUTH_TOKEN, or run auth save"
+  [[ -n "$AUTH_TOKEN" ]] || die "missing write credential; run 'capsules.sh auth login', ask the user to sign in or register, then save the pasted API key with 'capsules.sh auth save <key>'"
 }
 
 api_json_with_token() {
@@ -196,6 +197,21 @@ cmd_auth() {
   shift || true
 
   case "$sub" in
+    login)
+      [[ $# -eq 0 ]] || die "usage: capsules.sh auth login"
+      cat <<EOF
+Open this URL, sign in or create an account, generate an agent API key, and paste it back into the agent:
+
+$BASE_URL/agent-auth
+
+Then save it with:
+
+./scripts/capsules.sh auth save "{CAPSULES_API_KEY}"
+
+capsule_auth.login_url=$BASE_URL/agent-auth
+capsule_auth.credentials_file=$CREDENTIALS_FILE
+EOF
+      ;;
     save)
       [[ $# -eq 1 ]] || die "usage: capsules.sh auth save <token>"
       mkdir -p "$(dirname "$CREDENTIALS_FILE")"
@@ -213,7 +229,7 @@ cmd_auth() {
       echo "base_url=$BASE_URL"
       ;;
     *)
-      die "usage: capsules.sh auth save <token> | auth status"
+      die "usage: capsules.sh auth login | auth save <token> | auth status"
       ;;
   esac
 }

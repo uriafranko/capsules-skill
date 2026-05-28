@@ -10,7 +10,7 @@ description: >
 
 # Capsules
 
-Skill version: 0.1.0
+Skill version: 0.1.1
 
 Capsules are shared context stores for agent handoff.
 
@@ -31,7 +31,7 @@ Use Capsules for three jobs:
 - Bundled helper: `./scripts/capsules.sh`
 
 Until the public production URL is finalized, `capsules.sh` defaults to
-`http://localhost:3000`. For hosted environments, set `CAPSULES_BASE_URL` or pass
+`https://capsules-bay.vercel.app`. For hosted environments, set `CAPSULES_BASE_URL` or pass
 `--base-url`.
 
 ## Auth
@@ -48,6 +48,29 @@ Send API keys as `Authorization: Bearer <capsules-api-key>`. If the key has
 explicit scopes, it needs `capsules:write` for create, ingest, and token
 rotation. API keys without explicit scopes are treated as allowed for capsule
 read and write operations.
+
+Before any `create`, `ingest`, or token rotation, check auth:
+
+```bash
+./scripts/capsules.sh auth status
+```
+
+If `write_credential=missing`, do not create a fallback brief or pretend a real
+capsule exists. Start the login flow:
+
+```bash
+./scripts/capsules.sh auth login
+```
+
+Ask the user to open the printed URL, sign in or create an account, generate an
+agent API key, and paste the key back into the chat. After receiving the key,
+save it yourself:
+
+```bash
+./scripts/capsules.sh auth save "{CAPSULES_API_KEY}"
+```
+
+Then rerun `auth status` and continue the requested Capsules operation.
 
 Store a credential:
 
